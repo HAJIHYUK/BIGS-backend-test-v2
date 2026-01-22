@@ -52,4 +52,31 @@ class 결제서비스Test {
         assertEquals(BigDecimal("9600"), res.netAmount)
         assertEquals(PaymentStatus.APPROVED, res.status)
     }
+
+    @Test
+    @DisplayName("제휴사별로 서로 다른 수수료 정책이 동적으로 적용되어야 한다 리팩토링 테스트 코드")
+    fun `제휴사별로 서로 다른 수수료 정책이 동적으로 적용되어야 한다`() {
+        val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
+
+        // Ex :  제휴사 2번은 5% + 200원 정책을 가짐
+        every { partnerRepo.findById(2L) } returns Partner(2L, "TEST2", "Test2", true)
+        every { feeRepo.findEffectivePolicy(2L, any()) } returns FeePolicy(
+            id = 20L, partnerId = 2L,
+            effectiveFrom = LocalDateTime.of(2020, 1, 1, 0, 0),
+            percentage = BigDecimal("0.0500"), // 5%
+            fixedFee = BigDecimal("200")       // 200원
+        )
+        val savedSlot = slot<Payment>()
+        every { paymentRepo.save(capture(savedSlot)) } answers { savedSlot.captured.copy(id = 100L) }
+
+        // When: 10,000원 결제 요청
+        val cmd = PaymentCommand(partnerId = 2L, amount = BigDecimal("10000"), cardLast4 = "1111")
+        val res = service.pay(cmd)
+
+        // Then: 수수료는 700원(10000 * 0.05 + 200)이어야 함
+        assertEquals(100L, res.id)
+        assertEquals(BigDecimal("700"), res.feeAmount)
+        assertEquals(BigDecimal("9300"), res.netAmount)
+        assertEquals(BigDecimal("0.0500"), res.appliedFeeRate)
+    }
 }
