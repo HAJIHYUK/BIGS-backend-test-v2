@@ -1,18 +1,27 @@
 package im.bigs.pg.application.payment.service
 
-import im.bigs.pg.application.payment.port.`in`.*
+import im.bigs.pg.application.payment.port.`in`.QueryFilter
+import im.bigs.pg.application.payment.port.`in`.QueryPaymentsUseCase
+import im.bigs.pg.application.payment.port.`in`.QueryResult
+import im.bigs.pg.application.payment.port.out.PaymentOutPort
+import im.bigs.pg.application.payment.port.out.PaymentQuery
+import im.bigs.pg.application.payment.port.out.PaymentSummaryFilter
 import im.bigs.pg.domain.payment.PaymentSummary
 import org.springframework.stereotype.Service
 import java.time.Instant
-import java.util.Base64
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.util.*
 
 /**
  * 결제 이력 조회 유스케이스 구현체.
- * - 커서 토큰은 createdAt/id를 안전하게 인코딩해 전달/복원합니다.
+ * - 커서 토큰은 createdAt/id를 안전하게 인코딩해 전달/복원합니다.서
  * - 통계는 조회 조건과 동일한 집합을 대상으로 계산됩니다.
  */
 @Service
-class QueryPaymentsService : QueryPaymentsUseCase {
+class QueryPaymentsService(
+    private val paymentOutPort: PaymentOutPort,
+) : QueryPaymentsUseCase {
     /**
      * 필터를 기반으로 결제 내역을 조회합니다.
      *
@@ -23,11 +32,41 @@ class QueryPaymentsService : QueryPaymentsUseCase {
      * @return 조회 결과(목록/통계/커서)
      */
     override fun query(filter: QueryFilter): QueryResult {
+        // 1. 커서 해독
+        val (cursorInstant, cursorId) = decodeCursor(filter.cursor)
+
+        // 2. 데이터 조회
+        val page = paymentOutPort.findBy(
+            PaymentQuery(
+                partnerId = filter.partnerId,
+                status = filter.status?.let { im.bigs.pg.domain.payment.PaymentStatus.valueOf(it.uppercase()) },
+                from = filter.from,
+                to = filter.to,
+                cursorCreatedAt = cursorInstant?.let { LocalDateTime.ofInstant(it, ZoneOffset.UTC) },
+                cursorId = cursorId,
+                limit = filter.limit
+            )
+        )
+
+        // 3. 통계 조회
+        val summary = paymentOutPort.summary(
+            PaymentSummaryFilter(
+                partnerId = filter.partnerId,
+                status = filter.status?.let { im.bigs.pg.domain.payment.PaymentStatus.valueOf(it.uppercase()) },
+                from = filter.from,
+                to = filter.to
+            )
+        )
+
+        // 4. 커서 암호화
+        val nextCursor = encodeCursor(page.nextCursorCreatedAt?.toInstant(ZoneOffset.UTC), page.nextCursorId)
+
+        // 5. 최종 결과 조립
         return QueryResult(
-            items = emptyList(),
-            summary = PaymentSummary(count = 0, totalAmount = java.math.BigDecimal.ZERO, totalNetAmount = java.math.BigDecimal.ZERO),
-            nextCursor = null,
-            hasNext = false,
+            items = page.items,
+            summary = PaymentSummary(summary.count, summary.totalAmount, summary.totalNetAmount),
+            nextCursor = nextCursor,
+            hasNext = page.hasNext
         )
     }
 
