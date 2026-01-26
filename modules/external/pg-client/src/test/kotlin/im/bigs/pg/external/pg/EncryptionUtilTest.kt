@@ -58,7 +58,8 @@ class EncryptionUtilTest {
     fun `유효하지_않은_암호문_복호화_예외_테스트`() {
         val invalidEncryptedText = "this-is-not-a-valid-base64url-string"
 
-        assertThrows<IllegalArgumentException> { // Base64.getUrlDecoder().decode에서 발생
+        // Base64 디코딩은 성공하더라도, GCM 태그가 일치하지 않아 AEADBadTagException이 발생함
+        assertThrows<AEADBadTagException> { // IllegalArgumentException 대신 AEADBadTagException 발생 예상
             EncryptionUtil.decrypt(invalidEncryptedText)
         }
     }
