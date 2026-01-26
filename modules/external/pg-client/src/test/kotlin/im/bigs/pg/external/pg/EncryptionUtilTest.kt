@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
+import javax.crypto.AEADBadTagException
 
 class EncryptionUtilTest {
 
@@ -27,5 +29,48 @@ class EncryptionUtilTest {
         
         // 2. 복호화된 결과는 다시 원문과 완벽히 일치해야 함
         assertEquals(plaintext, decrypted)
+    }
+
+    @Test
+    @DisplayName("빈 문자열을 암호화하고 복호화하면 원래 빈 문자열과 일치해야 한다")
+    fun `빈_문자열_암호화_복호화_테스트`() {
+        val plaintext = ""
+        val encrypted = EncryptionUtil.encrypt(plaintext)
+        val decrypted = EncryptionUtil.decrypt(encrypted)
+
+        assertNotEquals(plaintext, encrypted) // 빈 문자열도 암호화되면 달라야 함
+        assertEquals(plaintext, decrypted)
+    }
+
+    @Test
+    @DisplayName("특수 문자를 포함한 문자열을 암호화하고 복호화하면 원래 문자열과 일치해야 한다")
+    fun `특수_문자_포함_문자열_암호화_복호화_테스트`() {
+        val plaintext = """{"name":"한글이름", "desc":"!@#$%^&*()_+"}"""
+        val encrypted = EncryptionUtil.encrypt(plaintext)
+        val decrypted = EncryptionUtil.decrypt(encrypted)
+
+        assertNotEquals(plaintext, encrypted)
+        assertEquals(plaintext, decrypted)
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 Base64URL 형식의 암호문 복호화 시 예외가 발생해야 한다")
+    fun `유효하지_않은_암호문_복호화_예외_테스트`() {
+        val invalidEncryptedText = "this-is-not-a-valid-base64url-string"
+
+        assertThrows<IllegalArgumentException> { // Base64.getUrlDecoder().decode에서 발생
+            EncryptionUtil.decrypt(invalidEncryptedText)
+        }
+    }
+
+    @Test
+    @DisplayName("유효한 Base64이나 암호화 형식이 아닌 경우 복호화 시 예외가 발생해야 한다")
+    fun `유효한_Base64이나_형식_아닌_경우_복호화_예외_테스트`() {
+        // Base64 형식은 맞지만, AES-GCM 형식이 아닌 임의의 데이터
+        val malformedEncryptedText = "SGVsbG8gV29ybGQ=" // "Hello World"
+
+        assertThrows<AEADBadTagException> {
+            EncryptionUtil.decrypt(malformedEncryptedText)
+        }
     }
 }
