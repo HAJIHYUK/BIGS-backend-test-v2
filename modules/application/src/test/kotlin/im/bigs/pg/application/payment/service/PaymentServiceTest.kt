@@ -15,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDateTime
@@ -36,6 +37,7 @@ class 결제서비스Test {
     @DisplayName("결제 시 수수료 정책을 적용하고 저장해야 한다")
     fun `결제 시 수수료 정책을 적용하고 저장해야 한다`() {
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
+
         every { partnerRepo.findById(1L) } returns Partner(1L, "TEST", "Test", true)
         every { feeRepo.findEffectivePolicy(1L, any()) } returns FeePolicy(
             id = 10L, partnerId = 1L, effectiveFrom = LocalDateTime.ofInstant(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC),
@@ -78,5 +80,55 @@ class 결제서비스Test {
         assertEquals(BigDecimal("700"), res.feeAmount)
         assertEquals(BigDecimal("9300"), res.netAmount)
         assertEquals(BigDecimal("0.0500"), res.appliedFeeRate)
+    }
+
+    @Test
+    @DisplayName("수수료 정책이 없는 제휴사는 결제 시도 시 예외가 발생해야 한다")
+    fun `수수료 정책이 없는 제휴사는 결제 시도 시 예외가 발생해야 한다`() {
+        val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
+
+        every { partnerRepo.findById(3L) } returns Partner(3L, "NO_FEE_POLICY", "NoFeePolicy", true)
+        every { feeRepo.findEffectivePolicy(3L, any()) } returns null // 수수료 정책이 없음을 Mocking
+
+        val cmd = PaymentCommand(partnerId = 3L, amount = BigDecimal("10000"), cardLast4 = "5555")
+
+        // Then: IllegalStateException 발생 검증
+        assertThrows<IllegalStateException> {
+            service.pay(cmd)
+        }
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 제휴사 ID로 결제 시도 시 예외가 발생해야 한다")
+    fun `존재하지 않는 제휴사 ID로 결제 시도 시 예외가 발생해야 한다`() {
+        val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
+
+        every { partnerRepo.findById(4L) } returns null // 파트너를 찾을 수 없음을 Mocking
+
+        val cmd = PaymentCommand(partnerId = 4L, amount = BigDecimal("10000"), cardLast4 = "6666")
+
+        // Then: IllegalArgumentException 발생 검증
+        assertThrows<IllegalArgumentException> {
+            service.pay(cmd)
+        }
+    }
+
+    @Test
+    @DisplayName("비활성화된 제휴사는 결제 시도 시 예외가 발생해야 한다")
+    fun `비활성화된 제휴사는 결제 시도 시 예외가 발생해야 한다`() {
+        val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
+
+        every { partnerRepo.findById(5L) } returns Partner(5L, "INACTIVE", "InactivePartner", false) // 비활성화된 파트너 Mocking
+        every { feeRepo.findEffectivePolicy(5L, any()) } returns FeePolicy( // 정책은 있지만 비활성화
+            id = 50L, partnerId = 5L, effectiveFrom = LocalDateTime.of(2020, 1, 1, 0, 0),
+            percentage = BigDecimal("0.0100"), fixedFee = BigDecimal("0")
+        )
+
+        val cmd = PaymentCommand(partnerId = 5L, amount = BigDecimal("10000"), cardLast4 = "7777")
+
+        // Then: IllegalArgumentException 발생 검증
+        assertThrows<IllegalArgumentException> {
+            service.pay(cmd)
+        }
     }
 }
