@@ -36,8 +36,8 @@ class 결제서비스Test {
     @Test
     @DisplayName("결제 시 수수료 정책을 적용하고 저장해야 한다")
     fun `결제 시 수수료 정책을 적용하고 저장해야 한다`() {
+        // Given: 제휴사 1번 (수수료 3% + 100원) 정책 설정
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
-
         every { partnerRepo.findById(1L) } returns Partner(1L, "TEST", "Test", true)
         every { feeRepo.findEffectivePolicy(1L, any()) } returns FeePolicy(
             id = 10L, partnerId = 1L, effectiveFrom = LocalDateTime.ofInstant(Instant.parse("2020-01-01T00:00:00Z"), ZoneOffset.UTC),
@@ -47,8 +47,11 @@ class 결제서비스Test {
         every { paymentRepo.save(capture(savedSlot)) } answers { savedSlot.captured.copy(id = 99L) }
 
         val cmd = PaymentCommand(partnerId = 1L, amount = BigDecimal("10000"), cardLast4 = "4242")
+
+        // When: 10,000원 결제 요청
         val res = service.pay(cmd)
 
+        // Then: 수수료 400원(300+100) 및 승인 상태 확인
         assertEquals(99L, res.id)
         assertEquals(BigDecimal("400"), res.feeAmount)
         assertEquals(BigDecimal("9600"), res.netAmount)
@@ -58,6 +61,7 @@ class 결제서비스Test {
     @Test
     @DisplayName("제휴사별로 서로 다른 수수료 정책이 동적으로 적용되어야 한다 리팩토링 테스트 코드")
     fun `제휴사별로 서로 다른 수수료 정책이 동적으로 적용되어야 한다`() {
+        // Given: 제휴사 2번 (수수료 5% + 200원) 정책 설정
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
 
         // Ex :  제휴사 2번은 5% + 200원 정책을 가짐
@@ -71,11 +75,12 @@ class 결제서비스Test {
         val savedSlot = slot<Payment>()
         every { paymentRepo.save(capture(savedSlot)) } answers { savedSlot.captured.copy(id = 100L) }
 
-        // When: 10,000원 결제 요청
         val cmd = PaymentCommand(partnerId = 2L, amount = BigDecimal("10000"), cardLast4 = "1111")
+
+        // When: 10,000원 결제 요청
         val res = service.pay(cmd)
 
-        // Then: 수수료는 700원(10000 * 0.05 + 200)이어야 함
+        // Then: 수수료 700원(500+200) 확인
         assertEquals(100L, res.id)
         assertEquals(BigDecimal("700"), res.feeAmount)
         assertEquals(BigDecimal("9300"), res.netAmount)
@@ -85,6 +90,7 @@ class 결제서비스Test {
     @Test
     @DisplayName("수수료 정책이 없는 제휴사는 결제 시도 시 예외가 발생해야 한다")
     fun `수수료 정책이 없는 제휴사는 결제 시도 시 예외가 발생해야 한다`() {
+        // Given: 수수료 정책이 없는 제휴사(3번) 설정
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
 
         every { partnerRepo.findById(3L) } returns Partner(3L, "NO_FEE_POLICY", "NoFeePolicy", true)
@@ -92,7 +98,7 @@ class 결제서비스Test {
 
         val cmd = PaymentCommand(partnerId = 3L, amount = BigDecimal("10000"), cardLast4 = "5555")
 
-        // Then: IllegalStateException 발생 검증
+        // When & Then: IllegalStateException 발생 확인
         assertThrows<IllegalStateException> {
             service.pay(cmd)
         }
@@ -101,13 +107,14 @@ class 결제서비스Test {
     @Test
     @DisplayName("존재하지 않는 제휴사 ID로 결제 시도 시 예외가 발생해야 한다")
     fun `존재하지 않는 제휴사 ID로 결제 시도 시 예외가 발생해야 한다`() {
+        // Given: 존재하지 않는 제휴사(4번) 설정
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
 
         every { partnerRepo.findById(4L) } returns null // 파트너를 찾을 수 없음을 Mocking
 
         val cmd = PaymentCommand(partnerId = 4L, amount = BigDecimal("10000"), cardLast4 = "6666")
 
-        // Then: IllegalArgumentException 발생 검증
+        // When & Then: IllegalArgumentException 발생 확인
         assertThrows<IllegalArgumentException> {
             service.pay(cmd)
         }
@@ -116,6 +123,7 @@ class 결제서비스Test {
     @Test
     @DisplayName("비활성화된 제휴사는 결제 시도 시 예외가 발생해야 한다")
     fun `비활성화된 제휴사는 결제 시도 시 예외가 발생해야 한다`() {
+        // Given: 비활성화된 제휴사(5번) 설정
         val service = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(pgClient))
 
         every { partnerRepo.findById(5L) } returns Partner(5L, "INACTIVE", "InactivePartner", false) // 비활성화된 파트너 Mocking
@@ -126,7 +134,7 @@ class 결제서비스Test {
 
         val cmd = PaymentCommand(partnerId = 5L, amount = BigDecimal("10000"), cardLast4 = "7777")
 
-        // Then: IllegalArgumentException 발생 검증
+        // When & Then: IllegalArgumentException 발생 확인
         assertThrows<IllegalArgumentException> {
             service.pay(cmd)
         }

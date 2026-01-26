@@ -21,7 +21,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class 결제_조회_서비스_테스트 {
+class `결제_조회_서비스_테스트` {
 
     private val paymentOutPort = mockk<PaymentOutPort>()
     private val queryPaymentsService = QueryPaymentsService(paymentOutPort)
@@ -29,7 +29,7 @@ class 결제_조회_서비스_테스트 {
     @Test
     @DisplayName("결제 내역 조회 시 목록, 통계, 커서 정보가 올바르게 반환되어야 한다")
     fun `결제_내역_조회_성공`() {
-        // Given: Mock 데이터 설정
+        // Given: Mock 데이터(2건) 및 페이지 정보 설정
         val filter = QueryFilter(partnerId = 1L, limit = 10)
         
         val now = LocalDateTime.now() // 현재 시간을 기준으로 예시 데이터 생성
@@ -60,10 +60,10 @@ class 결제_조회_서비스_테스트 {
         every { paymentOutPort.findBy(any()) } returns mockPage
         every { paymentOutPort.summary(any()) } returns mockSummary
 
-        // When: 서비스 호출
+        // When: 조회 서비스 호출
         val result = queryPaymentsService.query(filter)
 
-        // Then: 결과 검증
+        // Then: 목록 개수, 통계, 다음 페이지 존재 여부(hasNext) 확인
         assertEquals(2, result.items.size)
         assertEquals(2, result.summary.count)
         assertEquals(BigDecimal("3000"), result.summary.totalAmount)
@@ -78,7 +78,7 @@ class 결제_조회_서비스_테스트 {
     @Test
     @DisplayName("마지막 페이지 조회 시 hasNext는 false, nextCursor는 null이어야 한다")
     fun `마지막_페이지_조회`() {
-        // Given
+        // Given: 데이터가 없는 빈 페이지 설정 (마지막 페이지 상황)
         val filter = QueryFilter(limit = 10)
         val mockPage = PaymentPage(
             items = emptyList(),
@@ -91,10 +91,10 @@ class 결제_조회_서비스_테스트 {
         every { paymentOutPort.findBy(any()) } returns mockPage
         every { paymentOutPort.summary(any()) } returns mockSummary
 
-        // When
+        // When: 조회 서비스 호출
         val result = queryPaymentsService.query(filter)
 
-        // Then
+        // Then: hasNext는 false, nextCursor는 null이어야 함
         assertFalse(result.hasNext)
         assertNull(result.nextCursor)
     }
@@ -102,7 +102,7 @@ class 결제_조회_서비스_테스트 {
     @Test
     @DisplayName("조회 결과가 없을 때 빈 목록과 0 통계를 반환해야 한다")
     fun `빈_결과_조회`() {
-        // Given
+        // Given: 빈 결과 Mock 설정
         val filter = QueryFilter(limit = 10)
         val mockPage = PaymentPage(emptyList(), false, null, null)
         val mockSummary = PaymentSummaryProjection(0, BigDecimal.ZERO, BigDecimal.ZERO)
@@ -110,10 +110,10 @@ class 결제_조회_서비스_테스트 {
         every { paymentOutPort.findBy(any()) } returns mockPage
         every { paymentOutPort.summary(any()) } returns mockSummary
 
-        // When
+        // When: 조회 서비스 호출
         val result = queryPaymentsService.query(filter)
 
-        // Then
+        // Then: 빈 목록, 0으로 채워진 통계, 커서 없음 확인
         assertTrue(result.items.isEmpty())
         assertEquals(0, result.summary.count)
         assertEquals(BigDecimal.ZERO, result.summary.totalAmount)
@@ -125,7 +125,7 @@ class 결제_조회_서비스_테스트 {
     @Test
     @DisplayName("다양한 필터 조건이 OutPort에 올바르게 전달되어야 한다")
     fun `필터_조건_전달_검증`() {
-        // Given
+        // Given: 다양한 필터 조건 설정
         val from = LocalDateTime.of(2024, 1, 1, 0, 0)
         val to = LocalDateTime.of(2024, 1, 31, 23, 59, 59)
         val filter = QueryFilter(
@@ -141,10 +141,10 @@ class 결제_조회_서비스_테스트 {
         every { paymentOutPort.findBy(capture(querySlot)) } returns PaymentPage(emptyList(), false, null, null)
         every { paymentOutPort.summary(capture(summarySlot)) } returns PaymentSummaryProjection(0, BigDecimal.ZERO, BigDecimal.ZERO)
 
-        // When
+        // When: 조회 서비스 호출
         queryPaymentsService.query(filter)
 
-        // Then: 캡처된 인자 검증
+        // Then: OutPort로 전달된 파라미터가 필터 조건과 일치하는지 검증
         val capturedQuery = querySlot.captured
         assertEquals(123L, capturedQuery.partnerId)
         assertEquals(PaymentStatus.APPROVED, capturedQuery.status)
