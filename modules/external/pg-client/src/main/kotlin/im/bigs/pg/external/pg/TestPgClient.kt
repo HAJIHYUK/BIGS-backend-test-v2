@@ -39,8 +39,8 @@ class TestPgClient(
         .build()
 
     override fun supports(partnerId: Long): Boolean {
-        // 모든 파트너에 대해 Test PG 연동을 사용하도록 설정
-        return true
+        // 파트너 ID가 3번(BananaPay)이 아닌 모든 요청은 기본 Test PG 연동을 사용함
+        return partnerId != 3L
     }
 
     override fun approve(request: PgApproveRequest): PgApproveResult {
@@ -73,8 +73,8 @@ class TestPgClient(
                 Map::class.java
             )
 
-            // 4. 응답 처리 및 복호화
-            val responseBody = responseEntity.body as Map<*, *>
+            // 4. 성공 응답 데이터 매핑
+            val responseBody = responseEntity.body!!
             
             return PgApproveResult(
                 approvalCode = responseBody["approvalCode"].toString(),
