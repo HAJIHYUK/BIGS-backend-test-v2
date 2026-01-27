@@ -14,6 +14,8 @@ import im.bigs.pg.domain.payment.PaymentStatus
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
+
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.assertThrows
 import java.math.BigDecimal
@@ -138,5 +140,27 @@ class 결제서비스Test {
         assertThrows<IllegalArgumentException> {
             service.pay(cmd)
         }
+    }
+
+    @Test
+    @DisplayName("PG 승인 실패 시 결제 정보가 저장되지 않아야 한다")
+    fun `PG 승인 실패 시 저장 안 됨`() {
+        // Given: PG 클라이언트가 예외를 던지도록 설정
+        every { partnerRepo.findById(1L) } returns Partner(1L, "TEST", "Test", true)
+
+        val failingPgClient = mockk<PgClientOutPort>()
+        every { failingPgClient.supports(any()) } returns true
+        every { failingPgClient.approve(any()) } throws RuntimeException("PG_ERROR")
+
+        val serviceWithFailingPg = PaymentService(partnerRepo, feeRepo, paymentRepo, listOf(failingPgClient))
+        val cmd = PaymentCommand(partnerId = 1L, amount = BigDecimal("10000"), cardLast4 = "4242")
+
+        // When & Then: 예외가 발생하는지 확인
+        assertThrows<RuntimeException> {
+            serviceWithFailingPg.pay(cmd)
+        }
+
+        // Then: DB 저장 함수(save)가 한 번도 호출되지 않았음을 검증
+        verify(exactly = 0) { paymentRepo.save(any()) }
     }
 }
